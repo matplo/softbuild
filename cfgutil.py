@@ -84,25 +84,40 @@ class BuildConfig(object):
         self.settings['version'] = version
         self.settings['directory'] = self.directory
         self.settings['cfg_read'] = False
-        self.settings['download_relpath'] = 'download'
+
+        if build_cfg:
+            for s in self.cfg.sections():
+                if s == self.version or self.version is None:
+                    self.cfg.set(s, 'install_prefix', os.path.join(build_cfg.settings['install_prefix'], self.cfg[s]['install_prefix']))
+
         if self.cfg:
             for s in self.cfg.sections():
                 if s == self.version or self.version is None:
-                    self.cfg[s]['install_prefix'] = os.path.abspath(os.path.curdir)                        
                     for key in self.cfg[s]:
                         self.settings[key] = process_property_in_config(self.cfg[s][key], self.cfg[s])
-                        self.settings[key] = self.cfg[s][key]
+                        # self.settings[key] = self.cfg[s][key]
                     self.settings['cfg_read'] = True
                     self.settings['version'] = s
-        self.settings['download_dir'] = os.path.join(os.path.abspath(os.path.curdir), self.settings['download_relpath'])
-        if build_cfg:
-            self.settings['install_prefix'] = os.path.join(build_cfg.settings['install_prefix'], self.settings['install_relpath'])
-            self.settings['download_dir'] = os.path.join(build_cfg.settings['download_dir'])
 
+        if build_cfg:
+            for key in build_cfg.settings:
+                if key in self.settings:
+                    pass
+                else:
+                    self.settings[key] = build_cfg.settings[key]
+
+                    
     def __repr__(self):
         s = ' '.join(['[i] Build Config',self.name, '\n'])
         s += ''.join(pprint.pformat(self.__dict__, indent=2))
         return s
                 
     def build(self):
-        pass
+        build_script = os.path.join(self.settings['working_dir'], '{}-{}-build.sh'.format(self.name, self.version))
+        os.makedirs(self.settings['working_dir'], exist_ok = True)
+        with open(build_script, 'w') as f:
+            print('#download', file=f)
+            print('mkdir -p {}'.format(self.settings['download_dir']), file=f)
+            print('cd {}'.format(self.settings['download_dir']), file=f)
+            print('{}'.format(self.settings['download_cmnd']), file=f)
+

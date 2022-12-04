@@ -39,6 +39,7 @@ def main():
     build_cfg = cfgutil.BuildConfig()
     fj_cfg = cfgutil.BuildConfig(name='fastjet', version='3.3.3', build_cfg=build_cfg)
     print(fj_cfg)
+    fj_cfg.build()
 
 
 if __name__=="__main__":
