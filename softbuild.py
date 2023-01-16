@@ -139,15 +139,18 @@ class BuildScript(GenericObject):
 			print('   ', _replacements)
 		new_contents = []
 		for l in _contents:
+			newl = l
 			for r in _replacements:
-				_tag = r[2:][:-2]
-				try:
-					_repls = _definitions[_tag]
-				except KeyError:
-					_repls = str(self[_tag])
-				if r in l:
-					_l = l.replace(r, _repls)
-					new_contents.append(_l)
+				if r in newl:
+					_tag = r[2:][:-2]
+					try:
+						_repls = _definitions[_tag]
+					except KeyError:
+						_repls = str(self.__getattr__(_tag))
+					print('replacing', r, 'with', _repls, 'in', newl)
+					newl = newl.replace(r, _repls)
+					print('... ->', newl)
+			new_contents.append(newl)
     
 		for l in new_contents:
 			print(l.strip('\n'))
