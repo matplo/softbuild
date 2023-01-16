@@ -116,7 +116,7 @@ class BuildScript(GenericObject):
 			_tag = m.group(0)
 			for l in _lines:
 				if l[:len(_tag):] == _tag:
-					ret_dict[_tag] = l[len(_tag):]
+					ret_dict[_tag] = l[len(_tag):].strip('\n')
 		return ret_dict
 
 	def get_replacements(self, _lines):
@@ -125,7 +125,7 @@ class BuildScript(GenericObject):
 		rv_matches = []
 		for m in matches:
 			if m.group(0) not in rv_matches:
-				rv_matches.append(m.group(0))
+				rv_matches.append(m.group(0).strip('\n'))
 		return rv_matches
 
 	def make_replacements(self):
@@ -141,10 +141,11 @@ class BuildScript(GenericObject):
 		for l in _contents:
 			newl = l
 			for r in _replacements:
+				_tag = r[2:][:-2]
+				print(r, _tag, _definitions)
 				if r in newl:
-					_tag = r[2:][:-2]
 					try:
-						_repls = _definitions[_tag]
+						_repls = _definitions[_tag+'=']
 					except KeyError:
 						_repls = str(self.__getattr__(_tag))
 					print('replacing', r, 'with', _repls, 'in', newl)
