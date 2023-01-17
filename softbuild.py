@@ -138,10 +138,8 @@ class BuildScript(GenericObject):
 					_repls = _definitions[_tag+'=']
 				except KeyError:
 					_repls = str(self.__getattr__(_tag))
-				print('replacing', r, 'with', _repls, 'in', newl)
 				newl = newl.replace(r, _repls)
 				replaced = True
-				print('... ->', newl)
 		return newl, replaced
 
 	def make_replacements(self):
@@ -160,9 +158,13 @@ class BuildScript(GenericObject):
 			while replaced:
 				newl, replaced = self.replace_in_line(newl, _definitions, _replacements)
 			new_contents.append(newl)
-    
-		for l in new_contents:
-			print(l.strip('\n'))
+		self.output_script = os.path.join(self.workdir, self.recipe + '_' + os.path.basename(self.script))
+		with open(self.output_script, 'w') as f:
+			f.writelines(new_contents)
+		if self.verbose:
+			print('[i] written:', self.output_script, file=sys.stderr)
+		# for l in new_contents:
+		# 	print(l.strip('\n'))
 		pass
 
 	def exec_cmnd(self, cmnd):
