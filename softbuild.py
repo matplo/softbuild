@@ -20,7 +20,7 @@ class GenericObject(object):
 	def configure_from_args(self, **kwargs):
 		for key, value in kwargs.items():
 			self.__setattr__(key, value)
-   
+
 	def configure_from_dict(self, d):
 		for k in d:
 			self.__setattr__(k, d[k])
@@ -78,6 +78,7 @@ def get_eq_val(s):
 		ret_dict[eqs[0]] = eqs[1].strip()
 	return ret_dict
 
+
 class ConfigData(GenericObject):
 	def __init__(self, **kwargs):
 		super(ConfigData, self).__init__(**kwargs)
@@ -124,16 +125,20 @@ class SoftBuild(GenericObject):
 			if self.valid:
 				self.makedirs()
 				self.make_replacements()
-				_p = None
-				try:
-					_p = subprocess.run([self.output_script], check=True)
-				except subprocess.CalledProcessError as exc:
-					print(f"{self.output_script} returned {exc.returncode}\n{exc}")
-				if _p:
-					print(f'[i] {self.output_script} returned {_p.returncode}')
-		# download if called
-		if self.download:
-			self.exec_download()
+				if self.dry_run:
+					print(f'[i] this is dry run - stopping before executing {self.output_script}')
+				else:
+					_p = None
+					try:
+						_p = subprocess.run([self.output_script], check=True)
+					except subprocess.CalledProcessError as exc:
+						print(f"{self.output_script} returned {exc.returncode}\n{exc}")
+					if _p:
+						print(f'[i] {self.output_script} returned {_p.returncode}')
+		else:
+			# download if called
+			if self.download:
+				self.exec_download()
 
 	def makedirs(self):
 		if self.clean:
@@ -232,7 +237,7 @@ class SoftBuild(GenericObject):
 			print('[i] checking bash syntax', self.recipe_file)
 		out, err, rc = self.exec_cmnd('bash -n ' + self.recipe_file)
 		if rc == 0:
-			return True	
+			return True
 		if rc > 0:
 			return False
 		return rc
@@ -261,6 +266,7 @@ def main():
 	parser.add_argument('-r', '--recipe', help='name of the recipe to process', type=str)
 	parser.add_argument('-d', '--download', help='download file', type=str)
 	parser.add_argument('--clean', help='start from scratch', action='store_true', default=False)
+	parser.add_argument('--dry-run', help='dry run - do not execute output script', action='store_true', default=False)
 	_recipe_dir = os.path.join(get_this_directory(), 'recipes')
 	parser.add_argument('--recipe-dir', help='dir where recipes info sit - default: {}'.format(_recipe_dir), default=_recipe_dir, type=str)
 	parser.add_argument('-o', '--output', help='output definition - for example for download', default='default.output', type=str)
@@ -270,7 +276,7 @@ def main():
 	parser.add_argument('-w', '--workdir', help='set the work dir for the setup - default is {}'.format(_default_workdir), default='{}'.format(_default_workdir), type=str)
 	parser.add_argument('-g', '--debug', '--verbose', help='print some extra info', action='store_true', default=False)
 	args = parser.parse_args()
-	
+
 	sb = SoftBuild(args=args)
 	print(sb)
 	sb.run()
