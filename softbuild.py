@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 
-import os
+import os, stat
 import argparse
 import sys
 import shlex
 import subprocess
 import re
+import shutil
 
 def get_this_directory():
 	return os.path.dirname(os.path.abspath(__file__))
@@ -77,9 +78,14 @@ def get_eq_val(s):
 		ret_dict[eqs[0]] = eqs[1].strip()
 	return ret_dict
 
+class ConfigData(GenericObject):
+	def __init__(self, **kwargs):
+		super(ConfigData, self).__init__(**kwargs)
+		if self.args:
+			self.configure_from_dict(self.args.__dict__)
+		self.verbose = self.debug
 
 class BuildScript(GenericObject):
-	_download_cmnd = os.path.join(__file__)
 	def __init__(self, **kwargs):
 		super(BuildScript, self).__init__(**kwargs)
 		if self.args:
@@ -97,8 +103,48 @@ class BuildScript(GenericObject):
 		if self.valid:
 			self.make_replacements()
 
+class SoftBuild(GenericObject):
+	def __init__(self, **kwargs):
+		super(SoftBuild, self).__init__(**kwargs)
+		if self.args:
+			self.configure_from_dict(self.args.__dict__)
+		if self.softbuild is None:
+			self.softbuild = __file__
+		self.verbose = self.debug
+		if self.recipe:
+			# handle the script
+			self.recipe = self.recipe.replace('-', '/')
+			self.recipe_file = os.path.join(self.recipe_dir, self.recipe)
+			if not os.path.isfile(self.recipe_file):
+				print('[e] recipe file', self.recipe_file, 'does not exist or not a file', file=sys.stderr)
+				self.valid = False
+				return
+			else:
+				if self.verbose:
+					print('[i] script specified exists:', self.recipe_file, file=sys.stderr)
+				self.valid = True
+			self.workdir = os.path.join(self.workdir, self.recipe)
+			self.builddir = os.path.join(self.workdir, 'build')
+			self.output_script = os.path.join(self.workdir, 'build.sh')
+
+	def run(self):
+		if self.recipe:
+			if self.valid:
+				self.makedirs()
+				self.make_replacements()
+		# download if called
+		if self.download:
+			self.exec_download()
+
+	def makedirs(self):
+		if self.clean:
+			shutil.rmtree(self.workdir)
+		if os.makedirs(self.workdir, exist_ok=True):
+			os.chdir(self.workdir)
+		os.makedirs(self.builddir, exist_ok=True)
+
 	def get_contents(self):
-		with open(self.script, 'r') as f:
+		with open(self.recipe_file, 'r') as f:
 			# self.contents = [_l.strip('\n') for _l in f.readlines()]
 			self.contents = f.readlines()
 		return self.contents
@@ -158,13 +204,11 @@ class BuildScript(GenericObject):
 			while replaced:
 				newl, replaced = self.replace_in_line(newl, _definitions, _replacements)
 			new_contents.append(newl)
-		self.output_script = os.path.join(self.workdir, self.recipe + '_' + os.path.basename(self.script))
 		with open(self.output_script, 'w') as f:
 			f.writelines(new_contents)
 		if self.verbose:
 			print('[i] written:', self.output_script, file=sys.stderr)
-		# for l in new_contents:
-		# 	print(l.strip('\n'))
+		os.chmod(self.output_script, stat.S_IRWXU)
 		pass
 
 	def exec_cmnd(self, cmnd):
@@ -184,99 +228,53 @@ class BuildScript(GenericObject):
 			print('     rc:', rc, file=sys.stderr)
 		return out, err, rc
 
-	def exec(self):
-		if self.test_exec():
-			self.make_replacements()
-		_rv = True
-		return _rv
-
 	def test_exec(self):
 		if self.verbose:
-			print('[i] checking bash syntax', self.script)
-		out, err, rc = self.exec_cmnd('bash -n ' + self.script)
+			print('[i] checking bash syntax', self.recipe_file)
+		out, err, rc = self.exec_cmnd('bash -n ' + self.recipe_file)
 		if rc == 0:
 			return True	
 		if rc > 0:
 			return False
 		return rc
 
-class SoftBuild(GenericObject):
-	def __init__(self, **kwargs):
-		super(SoftBuild, self).__init__(**kwargs)
-		if self.args:
-			self.configure_from_dict(self.args.__dict__)
-		self.verbose = self.debug
-		if os.makedirs(self.workdir, exist_ok=True):
-			os.chdir(self.workdir)
-
 	def exec_download(self):
 		os.chdir(self.workdir)
 		if self.verbose:
-			print('[i] current dir:', os.getcwd())
-		out, err, retcode = self.exec('wget -nc {}'.format(self.download))
-		if retcode > 0:
+			print('[i] current dir:', os.getcwd(), file=sys.stderr)
+		if self.clean:
+			if os.path.isfile(self.output):
+				os.remove(self.output)
+		if os.path.isfile(self.output):
+			return 0
+		out, err, rc = self.exec_cmnd('curl -o {} {}'.format(self.output, self.download))
+		if rc > 0:
 			if self.verbose:
-				print('[i] returning error={}'.format(retcode))
-				return retcode
-     
-	def main(self):
-		if self.download:
-			return self.exec_download()
-		if self.recipe:
-			return self.process_recipe()
-		return 0
-
-	def process_recipe(self):
-		_rv = None
-		if os.path.isfile(self.recipe):
-			if self.verbose:
-				print('[i] file exists:', self.recipe)
-		else:
-			self.recipe = os.path.join(self.recipe_dir, self.recipe, 'build.sh')
-		if self.verbose:
-			print('[i] processing recipe', self.recipe)
-		_bs = BuildScript(script=self.recipe, args=self.args)
-		if _bs.valid is False:
-			_rv = False
-		else:
-			_rv = _bs.exec()
-		return _rv
-
-	def exec(self, cmnd):
-		if self.verbose:
-			print('[i] calling', cmnd, file=sys.stderr)
-		args = shlex.split(cmnd)
-		try:
-			p = subprocess.Popen(args, shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-			out, err = p.communicate()
-		except OSError as e:
-			out = 'Failed.'
-			err = ('Error #{0} : {1}').format(e[0], e[1])
-		rc = p.returncode
-		if self.verbose:
-			print('    out:',out, file=sys.stderr)
-			print('    err:',err, file=sys.stderr)
-			print('     rc:', rc, file=sys.stderr)
-		return out, err, rc
-		
+				print('[i] returning error={}'.format(rc))
+				return rc
+		if os.path.isfile(self.output):
+			print('[i] output file:', self.output, file=sys.stderr)
 
 def main():
 	parser = argparse.ArgumentParser()
-	group = parser.add_mutually_exclusive_group(required=True)
-	group.add_argument('--softbuild', help='point to softbuild.py executable - default: this script', default=__file__)
-	group.add_argument('-r', '--recipe', help='name of the recipe to process', type=str)
+	# group = parser.add_mutually_exclusive_group(required=True)
+	parser.add_argument('--softbuild', help='point to softbuild.py executable - default: this script', default=__file__)
+	parser.add_argument('-r', '--recipe', help='name of the recipe to process', type=str)
+	parser.add_argument('-d', '--download', help='download file', type=str)
+	parser.add_argument('--clean', help='start from scratch', action='store_true', default=False)
 	_recipe_dir = os.path.join(get_this_directory(), 'recipes')
-	group.add_argument('--recipe-dir', help='dir where recipes info sit - default: {}'.format(_recipe_dir), default=_recipe_dir, type=str)
-	group.add_argument('-d', '--download', help='download mode; needs argument that is a valid url for file', type=str)
-	_default_prefix = os.path.join(get_this_directory(), 'software')
+	parser.add_argument('--recipe-dir', help='dir where recipes info sit - default: {}'.format(_recipe_dir), default=_recipe_dir, type=str)
+	parser.add_argument('-o', '--output', help='output definition - for example for download', default='default.output', type=str)
+	_default_prefix = os.path.join(os.getenv('HOME'), 'softbuild') # os.path.join(get_this_directory(), 'software')
 	parser.add_argument('--prefix', help='prefix of the installation {}'.format(_default_prefix), default=_default_prefix)
-	parser.add_argument('-w', '--workdir', help='set the work dir for the setup - default is /tmp/softbuild', default='/tmp/softbuild', type=str)
+	_default_workdir = os.path.join(os.getenv('HOME'), 'softbuild', '.workdir')
+	parser.add_argument('-w', '--workdir', help='set the work dir for the setup - default is {}'.format(_default_workdir), default='{}'.format(_default_workdir), type=str)
 	parser.add_argument('-g', '--debug', '--verbose', help='print some extra info', action='store_true', default=False)
 	args = parser.parse_args()
-
+	
 	sb = SoftBuild(args=args)
 	print(sb)
-	return sb.main()
+	sb.run()
 
 	# parse the build.sh and identify the parameters that could be overwritten - have to be in the form {{}}
 	# replace those found in either
