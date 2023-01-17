@@ -85,23 +85,6 @@ class ConfigData(GenericObject):
 			self.configure_from_dict(self.args.__dict__)
 		self.verbose = self.debug
 
-class BuildScript(GenericObject):
-	def __init__(self, **kwargs):
-		super(BuildScript, self).__init__(**kwargs)
-		if self.args:
-			self.configure_from_dict(self.args.__dict__)
-		self.verbose = self.debug
-		if self.script is None:
-			print('[e] no script specified:', self.script)
-		if os.path.isfile(self.script):
-			if self.verbose:
-				print('[i] script specified exists:', self.script)
-			self.valid = True
-		else:
-			print('[e] script does not exist:', self.script)
-			self.valid = False
-		if self.valid:
-			self.make_replacements()
 
 class SoftBuild(GenericObject):
 	def __init__(self, **kwargs):
@@ -111,10 +94,9 @@ class SoftBuild(GenericObject):
 		if self.softbuild is None:
 			self.softbuild = __file__
 		self.verbose = self.debug
+		self.fix_recipe_scriptname()
 		if self.recipe:
 			# handle the script
-			self.recipe = self.recipe.replace('-', '/')
-			self.recipe_file = os.path.join(self.recipe_dir, self.recipe)
 			if not os.path.isfile(self.recipe_file):
 				print('[e] recipe file', self.recipe_file, 'does not exist or not a file', file=sys.stderr)
 				self.valid = False
@@ -127,11 +109,28 @@ class SoftBuild(GenericObject):
 			self.builddir = os.path.join(self.workdir, 'build')
 			self.output_script = os.path.join(self.workdir, 'build.sh')
 
+
+	def fix_recipe_scriptname(self):
+		if self.recipe:
+			self.recipe = self.recipe.replace('-', '/')
+			self.recipe_file = os.path.join(self.recipe_dir, self.recipe)
+			if not os.path.isfile(self.recipe_file):
+				_split = os.path.splitext(self.recipe)
+				if _split[1] != '.sh':
+					self.recipe_file = self.recipe_file + '.sh'
+
 	def run(self):
 		if self.recipe:
 			if self.valid:
 				self.makedirs()
 				self.make_replacements()
+				_p = None
+				try:
+					_p = subprocess.run([self.output_script], check=True)
+				except subprocess.CalledProcessError as exc:
+					print(f"{self.output_script} returned {exc.returncode}\n{exc}")
+				if _p:
+					print(f'[i] {self.output_script} returned {_p.returncode}')
 		# download if called
 		if self.download:
 			self.exec_download()
