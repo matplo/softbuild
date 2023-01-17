@@ -128,6 +128,22 @@ class BuildScript(GenericObject):
 				rv_matches.append(m.group(0).strip('\n'))
 		return rv_matches
 
+	def replace_in_line(self, l, _definitions, _replacements):
+		replaced = False
+		newl = l
+		for r in _replacements:
+			_tag = r[2:][:-2]
+			if r in newl:
+				try:
+					_repls = _definitions[_tag+'=']
+				except KeyError:
+					_repls = str(self.__getattr__(_tag))
+				print('replacing', r, 'with', _repls, 'in', newl)
+				newl = newl.replace(r, _repls)
+				replaced = True
+				print('... ->', newl)
+		return newl, replaced
+
 	def make_replacements(self):
 		_contents = self.get_contents()
 		_definitions = self.get_definitions(_contents)
@@ -140,17 +156,9 @@ class BuildScript(GenericObject):
 		new_contents = []
 		for l in _contents:
 			newl = l
-			for r in _replacements:
-				_tag = r[2:][:-2]
-				print(r, _tag, _definitions)
-				if r in newl:
-					try:
-						_repls = _definitions[_tag+'=']
-					except KeyError:
-						_repls = str(self.__getattr__(_tag))
-					print('replacing', r, 'with', _repls, 'in', newl)
-					newl = newl.replace(r, _repls)
-					print('... ->', newl)
+			replaced = True
+			while replaced:
+				newl, replaced = self.replace_in_line(newl, _definitions, _replacements)
 			new_contents.append(newl)
     
 		for l in new_contents:
@@ -253,6 +261,7 @@ class SoftBuild(GenericObject):
 def main():
 	parser = argparse.ArgumentParser()
 	group = parser.add_mutually_exclusive_group(required=True)
+	group.add_argument('--softbuild', help='point to softbuild.py executable - default: this script', default=__file__)
 	group.add_argument('-r', '--recipe', help='name of the recipe to process', type=str)
 	_recipe_dir = os.path.join(get_this_directory(), 'recipes')
 	group.add_argument('--recipe-dir', help='dir where recipes info sit - default: {}'.format(_recipe_dir), default=_recipe_dir, type=str)
