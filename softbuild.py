@@ -97,6 +97,7 @@ class SoftBuild(GenericObject):
 		self.verbose = self.debug
 		self.fix_recipe_scriptname()
 		if self.recipe:
+			self.get_from_environment()
 			# handle the script
 			if not os.path.isfile(self.recipe_file):
 				print('[e] recipe file', self.recipe_file, 'does not exist or not a file', file=sys.stderr)
@@ -110,6 +111,14 @@ class SoftBuild(GenericObject):
 			self.builddir = os.path.join(self.workdir, 'build')
 			self.output_script = os.path.join(self.workdir, 'build.sh')
 
+	def get_from_environment(self):
+		_which = { 'CXX': 'g++'}
+		for w in _which:
+			_what = _which[w]
+			out, err, rc = self.exec_cmnd(f'which {_what}')
+			if rc == 0:
+				print('g++ is', out.decode('utf-8'))
+				self.__setattr__(w, out.decode('utf-8').strip('\n'))
 
 	def fix_recipe_scriptname(self):
 		if self.recipe:
@@ -142,7 +151,8 @@ class SoftBuild(GenericObject):
 
 	def makedirs(self):
 		if self.clean:
-			shutil.rmtree(self.workdir)
+			if os.path.exists(self.workdir):
+				shutil.rmtree(self.workdir)
 		if os.makedirs(self.workdir, exist_ok=True):
 			os.chdir(self.workdir)
 		os.makedirs(self.builddir, exist_ok=True)
@@ -251,13 +261,16 @@ class SoftBuild(GenericObject):
 				os.remove(self.output)
 		if os.path.isfile(self.output):
 			return 0
+		print(f'[i] downloading {self.download}', file=sys.stderr)
 		out, err, rc = self.exec_cmnd('curl -o {} {}'.format(self.output, self.download))
 		if rc > 0:
-			if self.verbose:
-				print('[i] returning error={}'.format(rc))
-				return rc
+			print('[i] returning error={}'.format(rc), file=sys.stderr)
+		if self.verbose:
+			print(' download output:', out, sys.stderr)
+			print(' download error :', err, sys.stderr)
 		if os.path.isfile(self.output):
 			print('[i] output file:', self.output, file=sys.stderr)
+		return rc
 
 def main():
 	parser = argparse.ArgumentParser()
@@ -278,7 +291,8 @@ def main():
 	args = parser.parse_args()
 
 	sb = SoftBuild(args=args)
-	print(sb)
+	if args.recipe:
+		print(sb)
 	sb.run()
 
 	# parse the build.sh and identify the parameters that could be overwritten - have to be in the form {{}}

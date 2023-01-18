@@ -11,4 +11,23 @@ cd {{srcdir}}
 # this produces only static libs
 ./configure --fastjet-config={{prefix}}/bin/fastjet-config --prefix={{prefix}} && make -j all && make check && make install
 # add a cmake for dynamic libs!
+if [ $? -eq 0 ] 
+then
+	make clean 
+	./configure --fastjet-config={{prefix}}/bin/fastjet-config --prefix={{prefix}} CXXFLAGS=-fPIC && make -j all && make check && make install
+	contribs=$(./configure --list)
+	for c in ${contribs}
+	do
+		cd ${c}
+		rm *example*.o
+		shlib={{prefix}}/lib/lib${c}.so
+		{{CXX}} -fPIC -shared -o ${shlib} *.o -Wl,-rpath,{{prefix}}/lib -L{{prefix}}/lib -lfastjettools -lfastjet
+		if [ -f ${shlib} ]; then
+			echo "[i] shared lib created ${shlib}"
+		else
+			echo "[i] shared lib NOT created ${shlib}"
+		fi
+		cd {{srcdir}}	
+	done
+fi
 exit $?
